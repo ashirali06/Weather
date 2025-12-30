@@ -17,7 +17,7 @@ if not OPENWEATHER_KEY or not GEMINI_KEY:
     st.stop()
 
 genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")
+model = genai.GenerativeModel("models/gemini-pro")
 
 # ---------------- FUNCTIONS ----------------
 def extract_city(text: str):
@@ -81,4 +81,5 @@ if user_input:
     with st.spinner("Checking weather..."):
         reply = chatbot(user_input)
         st.markdown(reply)
+
 
