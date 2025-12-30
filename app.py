@@ -4,8 +4,7 @@ import re
 import google.generativeai as genai
 
 # ---------------- CONFIG ----------------
-# Using st.secrets.get needed to avoid immediate crash if secrets aren't set yet during first run/setup
-OPENWEATHER_KEY = st.secrets.get("957b3f2f18bc0bec42969af03f87fd1d")
+OPENWEATHER_KEY = st.secrets.get("OPENWEATHER_API_KEY")
 GEMINI_KEY = st.secrets.get("GEMINI_API_KEY")
 
 WEATHER_URL = "https://api.openweathermap.org/data/2.5/weather"
@@ -13,62 +12,65 @@ WEATHER_URL = "https://api.openweathermap.org/data/2.5/weather"
 st.set_page_config(page_title="Weather Chatbot", page_icon="🌦️")
 st.title("🌦️ Smart Weather Chatbot")
 
-# Check for secrets before proceeding
 if not OPENWEATHER_KEY or not GEMINI_KEY:
-    st.error("🚨 API Keys missing! Please set `OPENWEATHER_API_KEY` and `GEMINI_API_KEY` in `.streamlit/secrets.toml`.")
+    st.error("API keys missing. Add them to .streamlit/secrets.toml")
     st.stop()
 
 genai.configure(api_key=GEMINI_KEY)
-# Initialize model with safety settings if needed, for now using default
-model = genai.GenerativeModel("gemini-2.0-flash")
+model = genai.GenerativeModel("gemini-1.5-flash")
 
 # ---------------- FUNCTIONS ----------------
-def extract_city(text):
-    match = re.search(r"in ([a-zA-Z ]+)", text.lower())
-    return match.group(1).title() if match else None
+def extract_city(text: str):
+    match = re.search(r"(?:in|at)\s+([a-zA-Z ]+)", text.lower())
+    return match.group(1).strip().title() if match else None
 
-def get_weather(city):
+
+def get_weather(city: str):
     params = {
         "q": city,
         "appid": OPENWEATHER_KEY,
         "units": "metric"
     }
     try:
-        r = requests.get(WEATHER_URL, params=params)
-        if r.status_code != 200:
+        response = requests.get(WEATHER_URL, params=params, timeout=10)
+        if response.status_code != 200:
             return None
-        return r.json()
-    except Exception as e:
-        st.error(f"Error fetching weather: {e}")
+        return response.json()
+    except requests.RequestException:
         return None
 
-def format_with_gemini(weather_json):
+
+def format_with_gemini(weather):
     prompt = f"""
 You are a helpful weather assistant.
-Use ONLY the data below. Do not add new facts.
 
-City: {weather_json['name']}
-Temperature: {weather_json['main']['temp']}°C
-Feels Like: {weather_json['main']['feels_like']}°C
-Humidity: {weather_json['main']['humidity']}%
-Condition: {weather_json['weather'][0]['description']}
+Use ONLY the data below.
+You may give light advice (clothing, umbrella).
+Do NOT invent numbers.
 
-Respond naturally and briefly like a human assistant.
+City: {weather['name']}
+Temperature: {weather['main']['temp']} °C
+Feels Like: {weather['main']['feels_like']} °C
+Humidity: {weather['main']['humidity']} %
+Condition: {weather['weather'][0]['description']}
+
+Reply in 2–3 natural sentences.
 """
     try:
         response = model.generate_content(prompt)
         return response.text
-    except Exception as e:
-        return f"Error communicating with AI: {e}"
+    except Exception:
+        return "Sorry, I couldn't generate a response."
 
-def chatbot(user_input):
+
+def chatbot(user_input: str):
     city = extract_city(user_input)
     if not city:
-        return "Ask like: **What's the weather in Karachi?**"
+        return "Please ask like: **What’s the weather in Karachi?**"
 
     weather = get_weather(city)
     if not weather:
-        return f"I couldn't find weather data for **{city}**."
+        return f"Could not find weather data for **{city}**."
 
     return format_with_gemini(weather)
 
@@ -76,6 +78,7 @@ def chatbot(user_input):
 user_input = st.text_input("Ask about the weather")
 
 if user_input:
-    with st.spinner("Fetching weather..."):
+    with st.spinner("Checking weather..."):
         reply = chatbot(user_input)
         st.markdown(reply)
+
